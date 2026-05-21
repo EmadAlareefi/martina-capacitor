@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment and local config
+.env
+.env.*
+!.env.example
+local.properties
+android/local.properties
+
+# Firebase and signing secrets
+google-services.json
+android/app/google-services.json
+GoogleService-Info.plist
+ios/App/App/GoogleService-Info.plist
+*.jks
+*.keystore
+*.p8
+*.p12
+*.mobileprovision
+
+# Capacitor generated web assets and config copies
+android/app/src/main/assets/public/
+android/app/src/main/assets/capacitor.config.json
+android/app/src/main/assets/capacitor.plugins.json
+android/app/src/main/res/xml/config.xml
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+
+# Android build output
+android/.gradle/
+android/**/build/
+android/**/.cxx/
+android/**/.externalNativeBuild/
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+
+# iOS build output
+ios/App/build/
+ios/App/DerivedData/
+ios/App/Pods/
+ios/App/output/
+DerivedData/
+*.xcuserstate
+xcuserdata/
+
+# IDEs and OS files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.iml
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/caches/
+.vscode/
+
+# Tooling
+.capacitor/
+.codex/
