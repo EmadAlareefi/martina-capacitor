@@ -1,13 +1,19 @@
 import UIKit
 import Capacitor
+import UserNotifications
+import WebKit
 
 @UIApplicationMain
-class AppDelegate: UIResponder, UIApplicationDelegate {
+class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandler {
 
     var window: UIWindow?
+    private let pushPrefsTokenKey = "MartinaPushToken"
+    private let pushRegisterURL = URL(string: "https://www.martina.sa/api/push/register")!
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Override point for customization after application launch.
+        UNUserNotificationCenter.current().delegate = self
+        installNativePushBridgeWhenReady()
+        requestNotificationPermission()
         return true
     }
 
@@ -44,6 +50,212 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // Feel free to add additional processing here, but if you want the App API to support
         // tracking app url opens, make sure to keep this call
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        savePushToken(token)
+        updateWebPushToken(token)
+        postPushToken(token)
+        NotificationCenter.default.post(
+            name: .capacitorDidRegisterForRemoteNotifications,
+            object: deviceToken
+        )
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        NSLog("MartinaPush failed to register for remote notifications: \(error.localizedDescription)")
+        NotificationCenter.default.post(
+            name: .capacitorDidFailToRegisterForRemoteNotifications,
+            object: error
+        )
+    }
+
+    func userNotificationCenter(
+        _ center: UNUserNotificationCenter,
+        willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void
+    ) {
+        if #available(iOS 14.0, *) {
+            completionHandler([.banner, .sound, .badge])
+        } else {
+            completionHandler([.alert, .sound, .badge])
+        }
+    }
+
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "MartinaNativePush" else {
+            return
+        }
+
+        if let body = message.body as? [String: Any],
+           body["method"] as? String == "registerPushToken" {
+            requestNotificationPermission()
+        }
+    }
+
+    private func requestNotificationPermission() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if let error = error {
+                NSLog("MartinaPush notification permission request failed: \(error.localizedDescription)")
+                return
+            }
+
+            if !granted {
+                NSLog("MartinaPush notification permission denied")
+                return
+            }
+
+            DispatchQueue.main.async {
+                UIApplication.shared.registerForRemoteNotifications()
+            }
+        }
+    }
+
+    private func installNativePushBridgeWhenReady(attempt: Int = 0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+            guard let self = self else {
+                return
+            }
+
+            guard let webView = self.capacitorWebView() else {
+                if attempt < 20 {
+                    self.installNativePushBridgeWhenReady(attempt: attempt + 1)
+                }
+                return
+            }
+
+            let contentController = webView.configuration.userContentController
+            contentController.add(self, name: "MartinaNativePush")
+
+            let script = WKUserScript(
+                source: self.nativePushBridgeScript(token: self.getSavedPushToken()),
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
+            )
+            contentController.addUserScript(script)
+            webView.evaluateJavaScript(script.source)
+        }
+    }
+
+    private func capacitorWebView() -> WKWebView? {
+        if let bridgeViewController = window?.rootViewController as? CAPBridgeViewController {
+            return bridgeViewController.bridge?.webView
+        }
+
+        if let navigationController = window?.rootViewController as? UINavigationController,
+           let bridgeViewController = navigationController.viewControllers.first as? CAPBridgeViewController {
+            return bridgeViewController.bridge?.webView
+        }
+
+        return nil
+    }
+
+    private func nativePushBridgeScript(token: String) -> String {
+        """
+        (function () {
+          var token = \(jsonStringLiteral(token));
+          window.MartinaNativePush = {
+            registerPushToken: function () {
+              if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.MartinaNativePush) {
+                window.webkit.messageHandlers.MartinaNativePush.postMessage({ method: "registerPushToken" });
+              }
+            },
+            getPushToken: function () {
+              return token || "";
+            },
+            _setPushToken: function (value) {
+              token = value || "";
+            }
+          };
+        })();
+        """
+    }
+
+    private func savePushToken(_ token: String) {
+        UserDefaults.standard.set(token, forKey: pushPrefsTokenKey)
+    }
+
+    private func getSavedPushToken() -> String {
+        UserDefaults.standard.string(forKey: pushPrefsTokenKey) ?? ""
+    }
+
+    private func updateWebPushToken(_ token: String) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let webView = self.capacitorWebView() else {
+                return
+            }
+
+            webView.evaluateJavaScript(
+                "window.MartinaNativePush && window.MartinaNativePush._setPushToken(\(self.jsonStringLiteral(token)));"
+            )
+        }
+    }
+
+    private func postPushToken(_ token: String) {
+        var request = URLRequest(url: pushRegisterURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json; charset=utf-8", forHTTPHeaderField: "Content-Type")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.httpBody = jsonData([
+            "token": token,
+            "platform": "IOS",
+            "locale": "ar-SA",
+        ])
+
+        attachCookies(to: &request) { requestWithCookies in
+            URLSession.shared.dataTask(with: requestWithCookies) { _, response, error in
+                if let error = error {
+                    NSLog("MartinaPush token registration request failed: \(error.localizedDescription)")
+                    return
+                }
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    return
+                }
+
+                if !(200..<300).contains(httpResponse.statusCode) {
+                    NSLog("MartinaPush token registration failed with HTTP \(httpResponse.statusCode)")
+                }
+            }.resume()
+        }
+    }
+
+    private func attachCookies(to request: inout URLRequest, completion: @escaping (URLRequest) -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self,
+                  let cookieStore = self.capacitorWebView()?.configuration.websiteDataStore.httpCookieStore else {
+                completion(request)
+                return
+            }
+
+            cookieStore.getAllCookies { cookies in
+                let cookieHeader = cookies
+                    .filter { $0.domain.hasSuffix("martina.sa") }
+                    .map { "\($0.name)=\($0.value)" }
+                    .joined(separator: "; ")
+
+                if !cookieHeader.isEmpty {
+                    request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                }
+
+                completion(request)
+            }
+        }
+    }
+
+    private func jsonData(_ object: [String: Any]) -> Data? {
+        try? JSONSerialization.data(withJSONObject: object, options: [])
+    }
+
+    private func jsonStringLiteral(_ value: String) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: [value], options: []),
+              let json = String(data: data, encoding: .utf8),
+              json.count >= 2 else {
+            return "\"\""
+        }
+
+        return String(json.dropFirst().dropLast())
     }
 
 }
