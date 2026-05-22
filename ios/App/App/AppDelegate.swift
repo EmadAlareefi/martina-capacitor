@@ -13,7 +13,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
         installNativePushBridgeWhenReady()
-        requestNotificationPermission()
         return true
     }
 
@@ -110,18 +109,32 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             DispatchQueue.main.async {
                 NSLog("MartinaPush notification permission granted, registering for remote notifications")
                 UIApplication.shared.registerForRemoteNotifications()
-                self.logRemoteNotificationRegistrationState()
+                self.logRemoteNotificationRegistrationState(after: 2.0)
+                self.retryRemoteNotificationRegistrationIfNeeded(after: 4.0)
+                self.retryRemoteNotificationRegistrationIfNeeded(after: 10.0)
             }
         }
     }
 
-    private func logRemoteNotificationRegistrationState() {
+    private func logRemoteNotificationRegistrationState(after delay: TimeInterval) {
         UNUserNotificationCenter.current().getNotificationSettings { settings in
-            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 NSLog(
-                    "MartinaPush APNs registration check: isRegistered=\(UIApplication.shared.isRegisteredForRemoteNotifications), authorizationStatus=\(settings.authorizationStatus.rawValue)"
+                    "MartinaPush APNs registration check: isRegistered=\(UIApplication.shared.isRegisteredForRemoteNotifications), authorizationStatus=\(settings.authorizationStatus.rawValue), savedTokenLength=\(self.getSavedPushToken().count)"
                 )
             }
+        }
+    }
+
+    private func retryRemoteNotificationRegistrationIfNeeded(after delay: TimeInterval) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+            if !self.getSavedPushToken().isEmpty {
+                return
+            }
+
+            NSLog("MartinaPush APNs token still missing after \(Int(delay))s, retrying registerForRemoteNotifications")
+            UIApplication.shared.registerForRemoteNotifications()
+            self.logRemoteNotificationRegistrationState(after: 2.0)
         }
     }
 
@@ -149,6 +162,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             contentController.addUserScript(script)
             webView.evaluateJavaScript(script.source)
             NSLog("MartinaPush WebView bridge installed")
+            self.requestNotificationPermission()
         }
     }
 
