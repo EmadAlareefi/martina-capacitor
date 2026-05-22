@@ -8,7 +8,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     var window: UIWindow?
     private let pushPrefsTokenKey = "MartinaPushToken"
-    private let pushRegisterURL = URL(string: "https://martina.sa/api/push/register")!
+    private let pushRegisterURL = URL(string: "https://www.martina.sa/api/push/register")!
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
@@ -110,6 +110,17 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             DispatchQueue.main.async {
                 NSLog("MartinaPush notification permission granted, registering for remote notifications")
                 UIApplication.shared.registerForRemoteNotifications()
+                self.logRemoteNotificationRegistrationState()
+            }
+        }
+    }
+
+    private func logRemoteNotificationRegistrationState() {
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+                NSLog(
+                    "MartinaPush APNs registration check: isRegistered=\(UIApplication.shared.isRegisteredForRemoteNotifications), authorizationStatus=\(settings.authorizationStatus.rawValue)"
+                )
             }
         }
     }
