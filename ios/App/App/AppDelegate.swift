@@ -203,7 +203,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             "locale": "ar-SA",
         ])
 
-        attachCookies(to: &request) { requestWithCookies in
+        attachCookies(to: request) { requestWithCookies in
             URLSession.shared.dataTask(with: requestWithCookies) { _, response, error in
                 if let error = error {
                     NSLog("MartinaPush token registration request failed: \(error.localizedDescription)")
@@ -221,11 +221,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
-    private func attachCookies(to request: inout URLRequest, completion: @escaping (URLRequest) -> Void) {
+    private func attachCookies(to request: URLRequest, completion: @escaping (URLRequest) -> Void) {
         DispatchQueue.main.async { [weak self] in
+            var requestWithCookies = request
             guard let self = self,
                   let cookieStore = self.capacitorWebView()?.configuration.websiteDataStore.httpCookieStore else {
-                completion(request)
+                completion(requestWithCookies)
                 return
             }
 
@@ -236,10 +237,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                     .joined(separator: "; ")
 
                 if !cookieHeader.isEmpty {
-                    request.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
+                    requestWithCookies.setValue(cookieHeader, forHTTPHeaderField: "Cookie")
                 }
 
-                completion(request)
+                completion(requestWithCookies)
             }
         }
     }
