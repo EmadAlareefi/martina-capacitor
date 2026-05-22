@@ -2,7 +2,6 @@ import UIKit
 import Capacitor
 import UserNotifications
 import WebKit
-import Security
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandler {
@@ -130,14 +129,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     private func logPushRuntimeConfiguration() {
         let bundleId = Bundle.main.bundleIdentifier ?? "missing"
-        var apsEnvironment = "missing"
-
-        if let task = SecTaskCreateFromSelf(nil),
-           let value = SecTaskCopyValueForEntitlement(task, "aps-environment" as CFString, nil) {
-            apsEnvironment = "\(value)"
-        }
-
-        NSLog("MartinaPush runtime config: bundleId=\(bundleId), apsEnvironment=\(apsEnvironment)")
+        NSLog("MartinaPush runtime config: bundleId=\(bundleId)")
     }
 
     private func installNativePushBridgeWhenReady(attempt: Int = 0) {
