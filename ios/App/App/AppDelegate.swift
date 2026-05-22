@@ -2,6 +2,7 @@ import UIKit
 import Capacitor
 import UserNotifications
 import WebKit
+import Security
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate, WKScriptMessageHandler {
@@ -12,6 +13,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        logPushRuntimeConfiguration()
         installNativePushBridgeWhenReady()
         return true
     }
@@ -112,8 +114,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 NSLog("MartinaPush notification permission granted, registering for remote notifications")
                 UIApplication.shared.registerForRemoteNotifications()
                 self.logRemoteNotificationRegistrationState(after: 2.0)
-                self.retryRemoteNotificationRegistrationIfNeeded(after: 4.0)
-                self.retryRemoteNotificationRegistrationIfNeeded(after: 10.0)
             }
         }
     }
@@ -128,16 +128,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         }
     }
 
-    private func retryRemoteNotificationRegistrationIfNeeded(after delay: TimeInterval) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-            if !self.getSavedPushToken().isEmpty {
-                return
-            }
+    private func logPushRuntimeConfiguration() {
+        let bundleId = Bundle.main.bundleIdentifier ?? "missing"
+        var apsEnvironment = "missing"
 
-            NSLog("MartinaPush APNs token still missing after \(Int(delay))s, retrying registerForRemoteNotifications")
-            UIApplication.shared.registerForRemoteNotifications()
-            self.logRemoteNotificationRegistrationState(after: 2.0)
+        if let task = SecTaskCreateFromSelf(nil),
+           let value = SecTaskCopyValueForEntitlement(task, "aps-environment" as CFString, nil) {
+            apsEnvironment = "\(value)"
         }
+
+        NSLog("MartinaPush runtime config: bundleId=\(bundleId), apsEnvironment=\(apsEnvironment)")
     }
 
     private func installNativePushBridgeWhenReady(attempt: Int = 0) {
