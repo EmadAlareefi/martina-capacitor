@@ -51,6 +51,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         return ApplicationDelegateProxy.shared.application(application, continue: userActivity, restorationHandler: restorationHandler)
     }
 
+    @objc(application:didRegisterForRemoteNotificationsWithDeviceToken:)
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
         NSLog("MartinaPush APNs token received, length \(token.count)")
@@ -63,6 +64,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
         )
     }
 
+    @objc(application:didFailToRegisterForRemoteNotificationsWithError:)
     func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
         NSLog("MartinaPush failed to register for remote notifications: \(error.localizedDescription)")
         NotificationCenter.default.post(
