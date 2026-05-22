@@ -8,7 +8,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     var window: UIWindow?
     private let pushPrefsTokenKey = "MartinaPushToken"
-    private let pushRegisterURL = URL(string: "https://www.martina.sa/api/push/register")!
+    private let pushRegisterURL = URL(string: "https://martina.sa/api/push/register")!
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         UNUserNotificationCenter.current().delegate = self
@@ -54,6 +54,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
 
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         let token = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        NSLog("MartinaPush APNs token received, length \(token.count)")
         savePushToken(token)
         updateWebPushToken(token)
         postPushToken(token)
@@ -107,6 +108,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
 
             DispatchQueue.main.async {
+                NSLog("MartinaPush notification permission granted, registering for remote notifications")
                 UIApplication.shared.registerForRemoteNotifications()
             }
         }
@@ -135,6 +137,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             )
             contentController.addUserScript(script)
             webView.evaluateJavaScript(script.source)
+            NSLog("MartinaPush WebView bridge installed")
         }
     }
 
@@ -187,7 +190,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             }
 
             webView.evaluateJavaScript(
-                "window.MartinaNativePush && window.MartinaNativePush._setPushToken(\(self.jsonStringLiteral(token)));"
+                """
+                window.MartinaNativePush && window.MartinaNativePush._setPushToken(\(self.jsonStringLiteral(token)));
+                window.dispatchEvent(new CustomEvent("martina:native-push-token", { detail: { token: \(self.jsonStringLiteral(token)) } }));
+                """
             )
         }
     }
@@ -203,8 +209,9 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
             "locale": "ar-SA",
         ])
 
+        NSLog("MartinaPush posting token to backend")
         attachCookies(to: request) { requestWithCookies in
-            URLSession.shared.dataTask(with: requestWithCookies) { _, response, error in
+            URLSession.shared.dataTask(with: requestWithCookies) { data, response, error in
                 if let error = error {
                     NSLog("MartinaPush token registration request failed: \(error.localizedDescription)")
                     return
@@ -215,8 +222,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterD
                 }
 
                 if !(200..<300).contains(httpResponse.statusCode) {
-                    NSLog("MartinaPush token registration failed with HTTP \(httpResponse.statusCode)")
+                    let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                    NSLog("MartinaPush token registration failed with HTTP \(httpResponse.statusCode): \(body)")
+                    return
                 }
+
+                let body = data.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                NSLog("MartinaPush token registered with backend: \(body)")
             }.resume()
         }
     }
